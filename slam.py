@@ -14,6 +14,7 @@ sigma2_w = math.radians(10.0)**2  #will these be big enough??
 sigma2_r = .2**2
 sigma2_phi = math.radians(2.0)**2
 
+
 def graph_slam(ud, z, x):
 
     #do linearization
@@ -22,6 +23,7 @@ def graph_slam(ud, z, x):
     #repeat until converges
 
     return x
+
 
 def observation(x, ud, lm, x_hat):
     u = get_inputs()
@@ -52,12 +54,14 @@ def observation(x, ud, lm, x_hat):
 
     return x, ud, z, x_hat
 
+
 def get_inputs():
     v = 1.0 # m/s
     w = .1 # rad/s
 
     u = np.matrix(np.array([[v], [w]]))
     return u
+
 
 def motion_model(x, u):
     v = u[0, -1]
@@ -74,6 +78,7 @@ def motion_model(x, u):
 
     return x
 
+
 def ang_correct(ang):
     while ang >= 2 * math.pi:
         ang = ang - 2 * math.pi
@@ -82,6 +87,7 @@ def ang_correct(ang):
         ang = ang + 2 * math.pi
 
     return ang
+
 
 def main():
     print 'Starting GraphSLAM'
@@ -101,10 +107,19 @@ def main():
         x, ud, z, x_est = observation(x, ud, lm, x_est)
         x_hat = graph_slam(ud, z, x_est)
 
+        # Plot the landmarks and estimated landmark positions
+        plt.cla
+        plt.plot(lm[:, 0], lm[:, 1], 'kx')
+
+        # Plot the true position and estimated position
+        plt.plot(np.array(x[0, :]).flatten(), np.array(x[1, :]).flatten(), 'k')
+
+        plt.pause(.001)
+
         t += t_step
 
     print 'Finished'
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
