@@ -7,7 +7,7 @@ import math
 t_f = 100.0  # s
 t_step = 0.5  # s
 
-range = 20.0  # distance landmarks can be sensed
+MAX_DIST = 20.0  # distance landmarks can be sensed
 
 sigma2_v = 0.1**2  # variance for velocity and angular velocity
 sigma2_w = math.radians(10.0)**2  #will these be big enough??
@@ -15,20 +15,23 @@ sigma2_r = .2**2
 sigma2_phi = math.radians(2.0)**2
 
 
-def graph_slam(ud, z, x):
-
+def graph_slam(u, z, x):
+    #repeat the following until convergence
     #do linearization
+    omega, xi = linearize(u, z, x)
     #do reduction
     #do solving
     #repeat until converges
 
-    return x
+    return x, z
+
+def linearize(u, z, x):
 
 
-def observation(x, ud, lm, x_hat):
-    u = get_inputs()
 
-    x = motion_model(x, u)  # augment the current x vector
+def observation(u, ud, lm):
+
+    x = motion_model(u)  # augment the current x vector
 
     z = np.matrix(np.zeros((0, 2))) #place for r and phi
 
@@ -38,43 +41,48 @@ def observation(x, ud, lm, x_hat):
 
         r = math.sqrt(dx**2 + dy**2)
         phi = ang_correct(math.atan2(dy, dx) - x[2, -1])
-        if r < range:
+        if r < MAX_DIST:
+            # Add uncertainty to the values
             r = r + np.random.randn() * sigma2_r
             phi = phi + np.random.randn() * sigma2_phi
             temp = np.matrix([r, phi])
             z = np.vstack((z, temp))
 
     # calculate the measured velocity
-    u[0, 0] = u[0, 0] + np.random.randn() * sigma2_v
-    u[1, 0] = u[1, 0] + np.random.randn() * sigma2_w
+    temp = np.zeros((2, 1))
+    temp[0, 0] = u[0, -1] + np.random.randn() * sigma2_v
+    temp[1, 0] = u[1, -1] + np.random.randn() * sigma2_w
 
-    ud = np.hstack((ud, u))  # add the new measured velocity
+    ud = np.hstack((ud, temp))  # add the new measured velocity
 
-    x_hat = motion_model(x_hat, ud)
+    x_hat = motion_model(ud)
 
-    return x, ud, z, x_hat
+    return x, ud, lm, x_hat
 
 
-def get_inputs():
+def get_inputs(u):
     v = 1.0 # m/s
     w = .1 # rad/s
 
-    u = np.matrix(np.array([[v], [w]]))
-    return u
+    temp = np.matrix(np.array([[v], [w]]))
+    u_new = np.hstack((u, temp))
+    return u_new
 
 
-def motion_model(x, u):
-    v = u[0, -1]
-    w = u[1, -1]
-    x_prev = x[:, -1]
-    theta = x_prev[2, 0]
+def motion_model(u):
+    x = np.zeros((3, 1))
+    c = u.shape[1]
 
-    r = v/w
-    dx = np.matrix([[-r * math.sin(theta) + r * math.sin(theta + w * t_step)],
-                    [r * math.cos(theta) - r * math.cos(theta + w * t_step)],
-                    [w * t_step]])
-    temp = x_prev + dx
-    x = np.hstack((x, temp))
+    for i in range(c):
+        v = u[0, i]
+        w = u[1, i]
+        r = v/w
+        theta = x[2, -1]
+        dx = np.matrix([[-r * math.sin(theta) + r * math.sin(theta + w * t_step)],
+                        [r * math.cos(theta) - r * math.cos(theta + w * t_step)],
+                        [w * t_step]])
+        temp = x[:, -1] + dx
+        x = np.hstack((x, temp))
 
     return x
 
@@ -98,14 +106,14 @@ def main():
                      [-5.0, 20.0],
                      [-5.0, 5.0]])  #x and y positions for each land mark
 
-    x = np.matrix(np.zeros((3, 1)))  #the state variables are x, y, and yaw (heading angle) Actual position
-    x_est = np.matrix(np.zeros_like(x)) # this will have the estimated state
-    ud = np.matrix(np.zeros((2, 1)))  # first index is v the second is w
+    u = np.matrix(np.zeros((2, 0)))  # first index is v the second is w
+    ud = np.matrix(np.zeros((2, 0)))
 
     t = 0.0
     while t < t_f:
-        x, ud, z, x_est = observation(x, ud, lm, x_est)
-        x_hat = graph_slam(ud, z, x_est)
+        u = get_inputs(u)
+        x, ud, z, x_est = observation(u, ud, lm)  # Get the landmarks and add uncertainty to the measurements
+        x_hat, z_hat = graph_slam(ud, z, x_est)
 
         # Plot the landmarks and estimated landmark positions
         plt.cla
@@ -113,6 +121,7 @@ def main():
 
         # Plot the true position and estimated position
         plt.plot(np.array(x[0, :]).flatten(), np.array(x[1, :]).flatten(), 'k')
+        plt.plot(np.array(x_est[0, :]).flatten(), np.array(x_est[1, :]).flatten(), 'r')
 
         plt.pause(.001)
 
