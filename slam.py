@@ -16,6 +16,7 @@ sigma2_r = .2**2
 sigma2_phi = math.radians(2.0)**2
 Qt = np.diag([sigma2_r, sigma2_phi])
 Rt = np.diag([0.1, 0.1, math.radians(1.0)]) ** 2
+Rt_inv = np.linalg.inv(Rt)
 
 
 def graph_slam(u, z, x):
@@ -29,32 +30,40 @@ def graph_slam(u, z, x):
 
 
 def linearize(u, z, x):
-    omega = np.matrix(np.zeros((3,3))) #infinity in the first 3 positions?
-    x0 = np.diag([np.infty, np.infty, np.infty])  # Not sure how to put this into omega?
-    xi = np.array([0.0])
+    l_xc = x.shape[1]
+    omega_xx = np.zeros((l_xc, l_xc), dtype=object)
+    x0 = np.matrix(np.diag([np.infty, np.infty, np.infty]))
+    omega_xx[0, 0] = x0
+    xi = np.zeros((3, 1))  #Should this be 0 for x0?
 
-    c = u.shape[1]
+    c = u.shape[1] + 1
 
-    for i in range(c):
-        v = u[0, i]
-        w = u[1, i]
+    for i in range(1, c):
+        v = u[0, i - 1]
+        w = u[1, i - 1]
         r = v/w
-        theta = x[2, i]
+        theta = x[2, i - 1]
 
         dx = np.matrix([[-r * math.sin(theta) + r * math.sin(theta + w * t_step)],
                         [r * math.cos(theta) - r * math.cos(theta + w * t_step)],
                         [w * t_step]])
 
-        xhat_t = x[:, i] + dx
+        xhat_t = x[:, i - 1] + dx
 
         Gt = np.matrix([[1, 0, r * math.cos(theta) - r * math.cos(theta + w * t_step)],
                        [0, 1, r * math.sin(theta) - r * math.sin(theta + w * t_step)],
                        [0, 0, 1]])
+        o_temp = -Gt.T * Rt_inv * Gt
+        omega_xx[i, i-1] = o_temp
+        omega_xx[i-1, i] = o_temp.T  # Not sure which is supposed to be transposed. Does it matter as long as I am consistent?
+
+        xi_temp = -Gt.T * Rt_inv * (xhat_t - Gt * x[:, i-1])
+        xi = np.hstack((xi, xi_temp))
 
     # for [r_lm, phi] in z:
     # need a history of detected landmarks at each step
 
-    return omega, xi
+    return omega_xx, xi
 
 
 def observation(u, ud, lm):
@@ -98,7 +107,7 @@ def get_inputs(u):
 
 
 def motion_model(u):
-    x = np.zeros((3, 1))
+    x = np.matrix(np.zeros((3, 1)))
     c = u.shape[1]
 
     for i in range(c):
