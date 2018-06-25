@@ -14,7 +14,8 @@ sigma2_w = math.radians(10.0)**2  #will these be big enough??
 
 sigma2_r = .2**2
 sigma2_phi = math.radians(2.0)**2
-Qt = np.sqrt(np.diag([sigma2_r, sigma2_phi]))
+Qt = np.diag([sigma2_r, sigma2_phi])
+Rt = np.diag([0.1, 0.1, math.radians(1.0)]) ** 2
 
 
 def graph_slam(u, z, x):
@@ -29,7 +30,7 @@ def graph_slam(u, z, x):
 
 def linearize(u, z, x):
     omega = np.matrix(np.zeros((3,3))) #infinity in the first 3 positions?
-    x0 = np.diag([np.infty, np.infty, np.infty])  # will put into omega somewhere?
+    x0 = np.diag([np.infty, np.infty, np.infty])  # Not sure how to put this into omega?
     xi = np.array([0.0])
 
     c = u.shape[1]
@@ -46,13 +47,12 @@ def linearize(u, z, x):
 
         xhat_t = x[:, i] + dx
 
-        G = np.matrix([[1, 0, r * math.cos(theta) - r * math.cos(theta + w * t_step)],
+        Gt = np.matrix([[1, 0, r * math.cos(theta) - r * math.cos(theta + w * t_step)],
                        [0, 1, r * math.sin(theta) - r * math.sin(theta + w * t_step)],
                        [0, 0, 1]])
 
     # for [r_lm, phi] in z:
     # need a history of detected landmarks at each step
-
 
     return omega, xi
 
@@ -145,7 +145,7 @@ def main():
         x_hat, z_hat = graph_slam(ud, z, x_est)
 
         # Plot the landmarks and estimated landmark positions
-        plt.cla
+        plt.cla()
         plt.plot(lm[:, 0], lm[:, 1], 'kx')
 
         # Plot the true position and estimated position
