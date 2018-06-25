@@ -11,22 +11,50 @@ MAX_DIST = 20.0  # distance landmarks can be sensed
 
 sigma2_v = 0.1**2  # variance for velocity and angular velocity
 sigma2_w = math.radians(10.0)**2  #will these be big enough??
+
 sigma2_r = .2**2
 sigma2_phi = math.radians(2.0)**2
+Qt = np.sqrt(np.diag([sigma2_r, sigma2_phi]))
 
 
 def graph_slam(u, z, x):
-    #repeat the following until convergence
-    #do linearization
-    omega, xi = linearize(u, z, x)
+    #repeat the following until convergence. How do I know when it has converged
+    omega, xi = linearize(u, z, x)  # Do the linearization
     #do reduction
     #do solving
     #repeat until converges
 
     return x, z
 
-def linearize(u, z, x):
 
+def linearize(u, z, x):
+    omega = np.matrix(np.zeros((3,3))) #infinity in the first 3 positions?
+    x0 = np.diag([np.infty, np.infty, np.infty])  # will put into omega somewhere?
+    xi = np.array([0.0])
+
+    c = u.shape[1]
+
+    for i in range(c):
+        v = u[0, i]
+        w = u[1, i]
+        r = v/w
+        theta = x[2, i]
+
+        dx = np.matrix([[-r * math.sin(theta) + r * math.sin(theta + w * t_step)],
+                        [r * math.cos(theta) - r * math.cos(theta + w * t_step)],
+                        [w * t_step]])
+
+        xhat_t = x[:, i] + dx
+
+        G = np.matrix([[1, 0, r * math.cos(theta) - r * math.cos(theta + w * t_step)],
+                       [0, 1, r * math.sin(theta) - r * math.sin(theta + w * t_step)],
+                       [0, 0, 1]])
+
+    # for [r_lm, phi] in z:
+    # need a history of detected landmarks at each step
+
+
+    return omega, xi
 
 
 def observation(u, ud, lm):
@@ -108,6 +136,7 @@ def main():
 
     u = np.matrix(np.zeros((2, 0)))  # first index is v the second is w
     ud = np.matrix(np.zeros((2, 0)))
+    z1_t = np.matrix(np.zeros((0, 2)))
 
     t = 0.0
     while t < t_f:
@@ -128,6 +157,8 @@ def main():
         t += t_step
 
     print 'Finished'
+    plt.waitforbuttonpress()
+    plt.close()
 
 
 if __name__ == "__main__":
