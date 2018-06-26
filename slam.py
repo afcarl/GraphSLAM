@@ -22,7 +22,7 @@ Rt_inv = np.linalg.inv(Rt)
 
 def graph_slam(u, z1_t, x):
     #repeat the following until convergence. How do I know when it has converged
-    omega, xi = linearize(u, z1_t, x)  # Do the linearization
+    omega_xx, xi_xx, omega_xm, omega_mx, xi_xm = linearize(u, z1_t, x)  # Do the linearization
     #do reduction
     #do solving
     #repeat until converges
@@ -39,7 +39,7 @@ def linearize(u, z1_t, x):
 
     omega_xm = np.zeros((l_xc, 5), dtype=object)  # Not sure how to determine how many
     omega_mx = np.zeros((5, l_xc), dtype=object)
-    xi_xm = np.zeros((3, 1))
+    xi_xm = [np.zeros((5, 1)), np.zeros((5, 1)), np.zeros((5, 1)), np.zeros((5, 1)), np.zeros((5, 1))]
 
     c = u.shape[1] + 1
 
@@ -67,12 +67,12 @@ def linearize(u, z1_t, x):
 
 
     for j in range(len(z1_t)):
-        zt_i = z1_t[0]
+        zt_i = z1_t[j]
         lz = zt_i.shape[0]
         for k in range(lz):
             r = zt_i[k, 0]
             phi = zt_i[k, 1]
-            index = zt_i[k, 2]
+            index = int(zt_i[k, 2])
 
             dx = r * math.cos(phi)
             dy = r * math.sin(phi)
@@ -86,17 +86,26 @@ def linearize(u, z1_t, x):
                                   [dy, -dx, -q, -dy, dx]])
 
             o_temp = Ht.T * Qt_inv * Ht
-            
+            omega_xm[j, index] = o_temp
+            omega_mx[index, j] = o_temp.T
+
+            zt = np.matrix([[r], [phi]])
+            state = np.matrix([[x[0, j]], [x[1, j]], [x[2, j]], [x[0, j] + dx], [x[1, j] + dy]])
+            xi_temp = Ht.T * Qt_inv * (zt - zt_hat + Ht * state)
+            xi_xm[k] += xi_temp
 
 
-    return omega_xx, xi_xx
+
+
+
+    return omega_xx, xi_xx, omega_xm, omega_mx, xi_xm
 
 
 def observation(u, ud, lm):
 
     x = motion_model(u)  # augment the current x vector
 
-    z = np.matrix(np.zeros((0, 2))) #place for r and phi
+    z = np.matrix(np.zeros((0, 3))) #place for r and phi
 
     i = 0
 
@@ -106,7 +115,7 @@ def observation(u, ud, lm):
 
         r = math.sqrt(dx**2 + dy**2)
         phi = ang_correct(math.atan2(dy, dx) - x[2, -1])
-        if r < MAX_DIST:
+        if r <= MAX_DIST:
             # Add uncertainty to the values
             r = r + np.random.randn() * sigma2_r
             phi = phi + np.random.randn() * sigma2_phi
@@ -168,10 +177,10 @@ def main():
     print 'Starting GraphSLAM'
 
     lm = np.array([[10.0, -2.0],
-                     [15.0, 10.0],
-                     [3.0, 15.0],
-                     [-5.0, 20.0],
-                     [-5.0, 5.0]])  #x and y positions for each land mark
+                   [15.0, 10.0],
+                   [3.0, 15.0],
+                   [-5.0, 20.0],
+                   [-5.0, 5.0]])  #x and y positions for each land mark
 
     u = np.matrix(np.zeros((2, 0)))  # first index is v the second is w
     ud = np.matrix(np.zeros((2, 0)))
@@ -183,6 +192,7 @@ def main():
         u = get_inputs(u)
         x, ud, z, x_est = observation(u, ud, lm)  # Get the landmarks and add uncertainty to the measurements
         # z1_t = np.vstack((z1_t, z))  #This is the history of measured landmarks
+        lz = len(z)
         z1_t.append(z)
         x_hat, z_hat = graph_slam(ud, z1_t, x_est)
 
