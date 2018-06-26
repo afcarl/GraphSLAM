@@ -22,32 +22,44 @@ Rt_inv = np.linalg.inv(Rt)
 
 def graph_slam(u, z1_t, x):
     #repeat the following until convergence. How do I know when it has converged
-    omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs = linearize(u, z1_t, x)  # Do the linearization
-    ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs)  # Reduces the Information matrix
-    #do solving
+    omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm= linearize(u, z1_t, x)  # Do the linearization
+    ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)  # Reduces the Information matrix
+    x_hat, P = solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)
     #repeat until converges
 
     return x, z1_t
 
 
-def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs):
+def solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
+    #Calculate the mean
+    # P0_t = np.linalg.inv(ox_til)  # Do I take the inverse of each one individually?
+    # temp = ox_til * np.matrix(xi_x_til).T
+
+    #Calculate the covariance
+
+    return 1, 1
+
+
+def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
     ox_til = omega_xx
     xi_x_til = xi_xx
 
     # For each feature on the map
     for j in range(len(xi_xm)):
-        a = len(lm_obs)
-        for i in range(len(lm_obs)):
-            if not np.isscalar(omega_xm[i, j]):
+        for i in range(omega_xx.shape[1] - 1):  # Maybe use omega_xx.shape[1]
+            # if not np.isscalar(omega_xm[i, j]):  # NOTE This if statement does not work now. Need new solution possibly
+            if np.count_nonzero(omega_xm[i, j]):
                 m3 = omega_xm[i, j]
                 m2 = np.linalg.inv(omega_mm[j, j])
                 m1 = omega_mx[j, i]
                 b = xi_xm[j]
 
-                xi_temp = m1 * m2 * b
+                # xi_temp = m1 * m2 * np.matrix(b)
+                xi_temp = np.dot(np.dot(m1, m2), np.array(b))
                 xi_x_til[i] -= xi_temp
 
-                o_temp = m1 * m2 * m3
+                # o_temp = m1 * m2 * m3
+                o_temp = np.dot(np.dot(m1, m2), m3)
                 ox_til[i, i] -= o_temp
 
     return ox_til, xi_x_til
@@ -55,17 +67,20 @@ def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs):
 
 def linearize(u, z1_t, x):
     l_xc = x.shape[1]
-    omega_xx = np.zeros((l_xc, l_xc), dtype=object)
+    # omega_xx = np.zeros((l_xc, l_xc), dtype=object)
+    omega_xx = np.zeros((l_xc, l_xc, 3, 3))
     x0 = np.matrix(np.diag([np.infty, np.infty, np.infty]))
     omega_xx[0, 0] = x0
     # xi_xx = np.zeros((3, 1))  #Should this be 0 for x0?
     xi_xx = [np.zeros((3, 1))]
 
-    omega_xm = np.zeros((l_xc, 5), dtype=object)  # Not sure how to determine how many
-    omega_mx = np.zeros((5, l_xc), dtype=object)
+    # omega_xm = np.zeros((l_xc, 5), dtype=object)
+    # omega_mx = np.zeros((5, l_xc), dtype=object)
+    omega_xm = np.zeros((l_xc, 5, 2, 3))
+    omega_mx = np.zeros((5, l_xc, 3, 2))
     xi_xm = [np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1))]
-    omega_mm = np.zeros((5, 5), dtype=object)
-    lm_obs = []
+    # omega_mm = np.zeros((5, 5), dtype=object)
+    omega_mm = np.zeros((5, 5, 2, 2))
 
     c = u.shape[1] + 1
 
@@ -95,7 +110,6 @@ def linearize(u, z1_t, x):
     for j in range(len(z1_t)):
         zt_i = z1_t[j]
         lz = zt_i.shape[0]
-        obs = [False, False, False, False, False]
         for k in range(lz):
             r = zt_i[k, 0]
             phi = zt_i[k, 1]
@@ -124,10 +138,7 @@ def linearize(u, z1_t, x):
             xi_xx[j] += xi_temp[0:3]
             xi_xm[k] += xi_temp[3:5]
 
-            obs[k] = True
-        lm_obs.append(obs)
-
-    return omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs
+    return omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm
 
 
 def observation(u, ud, lm):
