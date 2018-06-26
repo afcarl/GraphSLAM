@@ -22,15 +22,15 @@ Rt_inv = np.linalg.inv(Rt)
 
 def graph_slam(u, z1_t, x):
     #repeat the following until convergence. How do I know when it has converged
-    omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, lm_obs = linearize(u, z1_t, x)  # Do the linearization
-    ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, lm_obs)  # Reduces the Information matrix
+    omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs = linearize(u, z1_t, x)  # Do the linearization
+    ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs)  # Reduces the Information matrix
     #do solving
     #repeat until converges
 
     return x, z1_t
 
 
-def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, lm_obs):
+def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs):
     ox_til = omega_xx
     xi_x_til = xi_xx
     oxm_til = omega_xm
@@ -38,9 +38,14 @@ def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, lm_obs):
     xi_m_til = xi_xm
 
     # For each feature on the map
-    # for i in xi_xm.shape[1]:
-    #     for j in range(len(lm_obs)):
-    #         if lm_obs[i][j]:
+    for j in range(len(xi_xm)):
+        a = len(lm_obs)
+        for i in range(len(lm_obs)):
+            if not np.isscalar(omega_xm[i, j]):
+                m1 = omega_xm[i, j]
+                m2 = np.linalg.inv(omega_mm[j, j])
+                m3 = omega_mx[j, i]
+                b = xi_xm[j]
 
 
 
@@ -107,9 +112,9 @@ def linearize(u, z1_t, x):
                                   [dy, -dx, -q, -dy, dx]])
 
             o_temp = Ht.T * Qt_inv * Ht  # Also need to break this up and add to different parts
-            omega_xx[j, j] += o_temp[0:3, 0:3]
-            omega_xm[j, index] += o_temp[3:5, 0:3]  # Not sure if I can do this
-            omega_mx[index, j] += o_temp[0:3, 3:5]
+            omega_xx[j + 1, j + 1] += o_temp[0:3, 0:3]
+            omega_xm[j+1, index] += o_temp[3:5, 0:3]  # Not sure if I can do this
+            omega_mx[index, j+1] += o_temp[0:3, 3:5]
             omega_mm[index, index] += o_temp[3:5, 3:5]
 
             zt = np.matrix([[r], [phi]])
@@ -121,7 +126,7 @@ def linearize(u, z1_t, x):
             obs[k] = True
         lm_obs.append(obs)
 
-    return omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, lm_obs
+    return omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs
 
 
 def observation(u, ud, lm):
