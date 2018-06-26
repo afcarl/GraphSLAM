@@ -33,21 +33,22 @@ def graph_slam(u, z1_t, x):
 def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm, lm_obs):
     ox_til = omega_xx
     xi_x_til = xi_xx
-    oxm_til = omega_xm
-    omx_til = omega_mx
-    xi_m_til = xi_xm
 
     # For each feature on the map
     for j in range(len(xi_xm)):
         a = len(lm_obs)
         for i in range(len(lm_obs)):
             if not np.isscalar(omega_xm[i, j]):
-                m1 = omega_xm[i, j]
+                m3 = omega_xm[i, j]
                 m2 = np.linalg.inv(omega_mm[j, j])
-                m3 = omega_mx[j, i]
+                m1 = omega_mx[j, i]
                 b = xi_xm[j]
 
+                xi_temp = m1 * m2 * b
+                xi_x_til[i] -= xi_temp
 
+                o_temp = m1 * m2 * m3
+                ox_til[i, i] -= o_temp
 
     return ox_til, xi_x_til
 
