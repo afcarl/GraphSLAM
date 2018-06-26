@@ -15,26 +15,31 @@ sigma2_w = math.radians(10.0)**2  #will these be big enough??
 sigma2_r = .2**2
 sigma2_phi = math.radians(2.0)**2
 Qt = np.diag([sigma2_r, sigma2_phi])
+Qt_inv = np.linalg.inv(Qt)
 Rt = np.diag([0.1, 0.1, math.radians(1.0)]) ** 2
 Rt_inv = np.linalg.inv(Rt)
 
 
-def graph_slam(u, z, x):
+def graph_slam(u, z1_t, x):
     #repeat the following until convergence. How do I know when it has converged
-    omega, xi = linearize(u, z, x)  # Do the linearization
+    omega, xi = linearize(u, z1_t, x)  # Do the linearization
     #do reduction
     #do solving
     #repeat until converges
 
-    return x, z
+    return x, z1_t
 
 
-def linearize(u, z, x):
+def linearize(u, z1_t, x):
     l_xc = x.shape[1]
     omega_xx = np.zeros((l_xc, l_xc), dtype=object)
     x0 = np.matrix(np.diag([np.infty, np.infty, np.infty]))
     omega_xx[0, 0] = x0
-    xi = np.zeros((3, 1))  #Should this be 0 for x0?
+    xi_xx = np.zeros((3, 1))  #Should this be 0 for x0?
+
+    omega_xm = np.zeros((l_xc, 5), dtype=object)  # Not sure how to determine how many
+    omega_mx = np.zeros((5, l_xc), dtype=object)
+    xi_xm = np.zeros((3, 1))
 
     c = u.shape[1] + 1
 
@@ -58,12 +63,33 @@ def linearize(u, z, x):
         omega_xx[i-1, i] = o_temp.T  # Not sure which is supposed to be transposed. Does it matter as long as I am consistent?
 
         xi_temp = -Gt.T * Rt_inv * (xhat_t - Gt * x[:, i-1])
-        xi = np.hstack((xi, xi_temp))
+        xi_xx = np.hstack((xi_xx, xi_temp))
 
-    # for [r_lm, phi] in z:
-    # need a history of detected landmarks at each step
 
-    return omega_xx, xi
+    for j in range(len(z1_t)):
+        zt_i = z1_t[0]
+        lz = zt_i.shape[0]
+        for k in range(lz):
+            r = zt_i[k, 0]
+            phi = zt_i[k, 1]
+            index = zt_i[k, 2]
+
+            dx = r * math.cos(phi)
+            dy = r * math.sin(phi)
+            delta = np.array([[dx],
+                              [dy]])
+            q = np.dot(delta.T, delta)[0, 0]
+            phi_hat = math.atan2(dy, dx) - x[2, j]
+            zt_hat = np.matrix([[math.sqrt(q)], [ang_correct(phi_hat)]])
+
+            Ht = 1/q * np.matrix([[-math.sqrt(q) * dx, -math.sqrt(q) * dy, 0, math.sqrt(q) * dx, math.sqrt(q) * dy],
+                                  [dy, -dx, -q, -dy, dx]])
+
+            o_temp = Ht.T * Qt_inv * Ht
+            
+
+
+    return omega_xx, xi_xx
 
 
 def observation(u, ud, lm):
@@ -71,6 +97,8 @@ def observation(u, ud, lm):
     x = motion_model(u)  # augment the current x vector
 
     z = np.matrix(np.zeros((0, 2))) #place for r and phi
+
+    i = 0
 
     for [lm_x, lm_y] in lm:
         dx = lm_x - x[0, -1]
@@ -82,8 +110,10 @@ def observation(u, ud, lm):
             # Add uncertainty to the values
             r = r + np.random.randn() * sigma2_r
             phi = phi + np.random.randn() * sigma2_phi
-            temp = np.matrix([r, phi])
+            temp = np.matrix([r, phi, i])
             z = np.vstack((z, temp))
+
+        i += 1
 
     # calculate the measured velocity
     temp = np.zeros((2, 1))
@@ -94,7 +124,7 @@ def observation(u, ud, lm):
 
     x_hat = motion_model(ud)
 
-    return x, ud, lm, x_hat
+    return x, ud, z, x_hat
 
 
 def get_inputs(u):
@@ -145,13 +175,16 @@ def main():
 
     u = np.matrix(np.zeros((2, 0)))  # first index is v the second is w
     ud = np.matrix(np.zeros((2, 0)))
-    z1_t = np.matrix(np.zeros((0, 2)))
+    # z1_t = np.matrix(np.zeros((0, 2)), dtype=object) #this allows for different sized matrices to be appended
+    z1_t = []
 
     t = 0.0
     while t < t_f:
         u = get_inputs(u)
         x, ud, z, x_est = observation(u, ud, lm)  # Get the landmarks and add uncertainty to the measurements
-        x_hat, z_hat = graph_slam(ud, z, x_est)
+        # z1_t = np.vstack((z1_t, z))  #This is the history of measured landmarks
+        z1_t.append(z)
+        x_hat, z_hat = graph_slam(ud, z1_t, x_est)
 
         # Plot the landmarks and estimated landmark positions
         plt.cla()
