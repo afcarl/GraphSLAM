@@ -23,8 +23,8 @@ Rt_inv = np.linalg.inv(Rt)
 def graph_slam(u, z1_t, x):
     #repeat the following until convergence. How do I know when it has converged
     omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm= linearize(u, z1_t, x)  # Do the linearization
-    ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)  # Reduces the Information matrix
-    x_hat, P = solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)
+    # ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)  # Reduces the Information matrix
+    # x_hat, P = solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)
     #repeat until converges
 
     return x, z1_t
@@ -69,19 +69,23 @@ def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
 def linearize(u, z1_t, x):
     l_xc = x.shape[1]
     # omega_xx = np.zeros((l_xc, l_xc), dtype=object)
-    omega_xx = np.zeros((l_xc, l_xc, 3, 3))
+    # omega_xx = np.zeros((l_xc, l_xc, 3, 3))
+    omega_xx = np.zeros((3 * l_xc, 3 * l_xc))
     x0 = np.matrix(np.diag([np.infty, np.infty, np.infty]))
-    omega_xx[0, 0] = x0
+    omega_xx[0:3, 0:3] = x0
     # xi_xx = np.zeros((3, 1))  #Should this be 0 for x0?
     xi_xx = [np.zeros((3, 1))]
 
     # omega_xm = np.zeros((l_xc, 5), dtype=object)
     # omega_mx = np.zeros((5, l_xc), dtype=object)
-    omega_xm = np.zeros((l_xc, 5, 2, 3))
-    omega_mx = np.zeros((5, l_xc, 3, 2))
+    # omega_xm = np.zeros((l_xc, 5, 2, 3))
+    omega_xm = np.zeros((2*l_xc, 3*5))
+    # omega_mx = np.zeros((5, l_xc, 3, 2))
+    omega_mx = np.zeros((3*5, 2*l_xc))
     xi_xm = [np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1))]
     # omega_mm = np.zeros((5, 5), dtype=object)
-    omega_mm = np.zeros((5, 5, 2, 2))
+    # omega_mm = np.zeros((5, 5, 2, 2))
+    omega_mm = np.zeros((2*5, 2*5))
 
     c = u.shape[1] + 1
 
@@ -101,8 +105,9 @@ def linearize(u, z1_t, x):
                        [0, 1, r * math.sin(theta) - r * math.sin(theta + w * t_step)],
                        [0, 0, 1]])
         o_temp = -Gt.T * Rt_inv * Gt
-        omega_xx[i, i-1] = o_temp
-        omega_xx[i-1, i] = o_temp.T  # Not sure which is supposed to be transposed. Does it matter as long as I am consistent?
+        # omega_xx[i, i-1] = o_temp
+        omega_xx[3*i:3*i+3, 3*(i - 1):3*(i-1)+3] = o_temp  # Not sure which is supposed to be transposed. Does it matter as long as I am consistent?
+        omega_xx[3*(i - 1):3*(i-1)+3, 3*i:3*i+3] = o_temp.T
 
         xi_temp = -Gt.T * Rt_inv * (xhat_t - Gt * x[:, i-1])
         xi_xx.append(xi_temp)
@@ -127,10 +132,10 @@ def linearize(u, z1_t, x):
                                   [dy, -dx, -q, -dy, dx]])
 
             o_temp = Ht.T * Qt_inv * Ht  # Also need to break this up and add to different parts
-            omega_xx[j + 1, j + 1] += o_temp[0:3, 0:3]
-            omega_xm[j+1, index] += o_temp[3:5, 0:3]  # Not sure if I can do this
-            omega_mx[index, j+1] += o_temp[0:3, 3:5]
-            omega_mm[index, index] += o_temp[3:5, 3:5]
+            omega_xx[3*(j + 1):3*(j+1)+3, 3*(j + 1):3*(j+1)+3] += o_temp[0:3, 0:3]
+            omega_xm[2*(j+1):2*(j+1)+2, 3*index:3*index+3] += o_temp[3:5, 0:3]  # Not sure if I can do this
+            omega_mx[3*index:3*index+3, 2*(j+1):2*(j+1)+2] += o_temp[0:3, 3:5]
+            omega_mm[2*index:2*index+2, 2*index:2*index+2] += o_temp[3:5, 3:5]
 
             zt = np.matrix([[r], [phi]])
             state = np.matrix([[x[0, j]], [x[1, j]], [x[2, j]], [x[0, j] + dx], [x[1, j] + dy]])
