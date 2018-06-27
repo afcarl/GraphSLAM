@@ -32,7 +32,8 @@ def graph_slam(u, z1_t, x):
 
 def solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
     #Calculate the mean
-    # P0_t = np.linalg.inv(ox_til)  # Do I take the inverse of each one individually?
+    # print('Start', ox_til)
+    # P0_t = np.linalg.inv(ox_til)
     # temp = ox_til * np.matrix(xi_x_til).T
 
     #Calculate the covariance
@@ -105,7 +106,6 @@ def linearize(u, z1_t, x):
 
         xi_temp = -Gt.T * Rt_inv * (xhat_t - Gt * x[:, i-1])
         xi_xx.append(xi_temp)
-
 
     for j in range(len(z1_t)):
         zt_i = z1_t[j]
