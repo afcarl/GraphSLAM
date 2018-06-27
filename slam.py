@@ -8,6 +8,7 @@ t_f = 100.0  # s
 t_step = 0.5  # s
 
 MAX_DIST = 20.0  # distance landmarks can be sensed
+MAX_ITR = 20
 
 sigma2_v = 0.1**2  # variance for velocity and angular velocity
 sigma2_w = math.radians(10.0)**2  #will these be big enough??
@@ -24,21 +25,42 @@ def graph_slam(u, z1_t, x):
     #repeat the following until convergence. How do I know when it has converged
     omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm= linearize(u, z1_t, x)  # Do the linearization
     ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)  # Reduces the Information matrix
-    # x_hat, P = solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)
-    #repeat until converges
+    x, x_hat_lm = solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)
 
-    return x, z1_t
+    return x, x_hat_lm
 
 
 def solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
     #Calculate the mean
-    # print('Start', ox_til)
-    # P0_t = np.linalg.inv(ox_til)
-    # temp = ox_til * np.matrix(xi_x_til).T
+    P0_t = np.linalg.inv(ox_til)
+    xi_x_t = np.zeros((3 * len(xi_x_til), 1))
+    for i in range(len(xi_x_til)):
+        temp = xi_x_til[i]
+        xi_x_t[3*i, 0] = temp.item(0)
+        xi_x_t[3*i+1, 0] = temp.item(1)
+        xi_x_t[3*i+2, 0] = temp.item(2)
+    x_hat = np.matmul(P0_t, xi_x_t)
 
     #Calculate the covariance
+    x_hat_lm = np.zeros((2*5, 1))
+    for j in range(len(xi_xm)):
+        for i in range(omega_xx.shape[1]/3 - 1):
+            # if np.count_nonzero(omega_xm[2 * i:2 * i + 2, 3 * j:3 * j + 3]):
+            if omega_xm.shape[0] == 2:
+                o_jj = np.linalg.inv(omega_mm[2*j:2*j+2, 2*j:2*j+2])
+                o_xm = omega_xm[2*j:2*j+2, 3*i:3*i+3]
+                xi_j = xi_xm[j]
+                mu = x_hat[3*i:3*i+3]
 
-    return 1, 1
+                print o_xm.shape
+
+                temp1 = xi_j + np.matmul(o_xm, mu)
+                est = np.matmul(o_jj, temp1)
+
+                x_hat_lm[2*j, 0] += est[0, 0]  # Not sure that these should be plus
+                x_hat_lm[2*j+1, 0] += est[1, 0]
+
+    return x_hat, x_hat_lm
 
 
 def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
@@ -237,6 +259,12 @@ def main():
         z1_t.append(z)
         x_hat, z_hat = graph_slam(ud, z1_t, x_est)
 
+        # x_hat_x = np.zeros((1, x_hat.shape[0]/3))
+        # x_hat_y = np.zeros((1, x_hat.shape[0] / 3))
+        # for i in range(x_hat.shape[0]/3):
+        #     x_hat_x[0, i] = x_hat[3*i, 0]
+        #     x_hat_y[0, i] = x_hat[3*i+1, 0]
+
         # Plot the landmarks and estimated landmark positions
         plt.cla()
         plt.plot(lm[:, 0], lm[:, 1], 'kx')
@@ -244,6 +272,7 @@ def main():
         # Plot the true position and estimated position
         plt.plot(np.array(x[0, :]).flatten(), np.array(x[1, :]).flatten(), 'k')
         plt.plot(np.array(x_est[0, :]).flatten(), np.array(x_est[1, :]).flatten(), 'r')
+        # plt.plot(x_hat_x, x_hat_y, 'g')
 
         plt.pause(.001)
 
