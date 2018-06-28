@@ -11,7 +11,7 @@ MAX_DIST = 20.0  # distance landmarks can be sensed
 MAX_ITR = 20
 
 sigma2_v = 0.1**2  # variance for velocity and angular velocity
-sigma2_w = math.radians(10.0)**2  #will these be big enough??
+sigma2_w = math.radians(10.0)**2
 
 sigma2_r = .2**2
 sigma2_phi = math.radians(2.0)**2
@@ -50,7 +50,6 @@ def solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm
     x_hat_lm = np.zeros((2*5, 1))
     for j in range(len(xi_xm)):
         for i in range(omega_xx.shape[1]/3 - 1):
-            # if np.count_nonzero(omega_xm[2 * i:2 * i + 2, 3 * j:3 * j + 3]):
             if omega_xm.shape[0] == 2:
                 o_jj = np.linalg.inv(omega_mm[2*j:2*j+2, 2*j:2*j+2])
                 o_xm = omega_xm[2*j:2*j+2, 3*i:3*i+3]
@@ -62,8 +61,8 @@ def solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm
                 temp1 = xi_j + np.matmul(o_xm, mu)
                 est = np.matmul(o_jj, temp1)
 
-                x_hat_lm[2*j, 0] += est[0, 0]  # Not sure that these should be plus
-                x_hat_lm[2*j+1, 0] += est[1, 0]
+                x_hat_lm[2*j, 0] = est[0, 0]  # Not sure that these should be plus. Try minus
+                x_hat_lm[2*j+1, 0] = est[1, 0]
 
     # Put x_hat into a 3 x Number of poses array
     x_hat_new = np.zeros((3, x_hat.shape[0]/3))
@@ -79,19 +78,16 @@ def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
 
     # For each feature on the map
     for j in range(len(xi_xm)):
-        for i in range(omega_xx.shape[1]/3 - 1):  # Maybe use omega_xx.shape[1]
-            # if not np.isscalar(omega_xm[i, j]):  # NOTE This if statement does not work now. Need new solution possibly
+        for i in range(omega_xx.shape[1]/3 - 1):
             if np.count_nonzero(omega_xm[2*i:2*i+2, 3*j:3*j+3]):
                 m3 = omega_xm[2*i:2*i+2, 3*j:3*j+3]
                 m2 = np.linalg.inv(omega_mm[2*j:2*j+2, 2*j:2*j+2])
                 m1 = omega_mx[3*j:3*j+3, 2*i:2*i+2]
                 b = xi_xm[j]
 
-                # xi_temp = m1 * m2 * np.matrix(b)
                 xi_temp = np.matmul(np.matmul(m1, m2), np.array(b))
                 xi_x_til[i] -= xi_temp
 
-                # o_temp = m1 * m2 * m3
                 o_temp = np.matmul(np.matmul(m1, m2), m3)
                 ox_til[3*i:3*i+3, 3*i:3*i+3] -= o_temp
 
@@ -100,19 +96,14 @@ def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
 
 def linearize(u, z1_t, x):
     l_xc = x.shape[1]
-    # omega_xx = np.zeros((l_xc, l_xc), dtype=object)
     omega_xx = np.zeros((3 * l_xc, 3 * l_xc))
     x0 = np.matrix(np.diag([np.infty, np.infty, np.infty]))
     omega_xx[0:3, 0:3] = x0
-    # xi_xx = np.zeros((3, 1))  #Should this be 0 for x0?
     xi_xx = [np.zeros((3, 1))]
 
-    # omega_xm = np.zeros((l_xc, 5), dtype=object)
-    # omega_mx = np.zeros((5, l_xc), dtype=object)
     omega_xm = np.zeros((2*l_xc, 3*5))
     omega_mx = np.zeros((3*5, 2*l_xc))
     xi_xm = [np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1))]
-    # omega_mm = np.zeros((5, 5), dtype=object)
     omega_mm = np.zeros((2*5, 2*5))
 
     c = u.shape[1] + 1
@@ -129,15 +120,14 @@ def linearize(u, z1_t, x):
 
         xhat_t = x[:, i - 1] + dx
 
-        Gt = np.matrix([[1, 0, r * math.cos(theta) - r * math.cos(theta + w * t_step)],
-                       [0, 1, r * math.sin(theta) - r * math.sin(theta + w * t_step)],
+        Gt = np.matrix([[1, 0, -r * math.cos(theta) + r * math.cos(theta + w * t_step)],
+                       [0, 1, -r * math.sin(theta) + r * math.sin(theta + w * t_step)],
                        [0, 0, 1]])
-        o_temp = -Gt.T * Rt_inv * Gt
-        # omega_xx[i, i-1] = o_temp
-        omega_xx[3*i:(3*i)+3, 3*(i - 1):3*(i-1)+3] = o_temp  # Not sure which is supposed to be transposed. Does it matter as long as I am consistent?
+        o_temp = -Gt.T * Rt_inv * -Gt
+        omega_xx[3*i:(3*i)+3, 3*(i - 1):3*(i-1)+3] = o_temp
         omega_xx[3*(i - 1):3*(i-1)+3, 3*i:3*i+3] = o_temp.T
 
-        xi_temp = -Gt.T * Rt_inv * (xhat_t - np.matmul(Gt, x[:, i-1])) #Gt * x[:, i-1])
+        xi_temp = -Gt.T * Rt_inv * (xhat_t - np.matmul(Gt, x[:, i-1]))
         xi_xx.append(xi_temp)
 
     for j in range(len(z1_t)):
@@ -152,7 +142,8 @@ def linearize(u, z1_t, x):
             dy = r * math.sin(phi)
             delta = np.array([[dx],
                               [dy]])
-            q = np.dot(delta.T, delta)[0, 0]
+
+            q = np.matmul(delta.T, delta)[0, 0]
             phi_hat = math.atan2(dy, dx) - x[2, j]
             zt_hat = np.matrix([[math.sqrt(q)], [ang_correct(phi_hat)]])
 
@@ -178,7 +169,7 @@ def observation(u, ud, lm):
 
     x = motion_model(u)  # augment the current x vector
 
-    z = np.matrix(np.zeros((0, 3))) #place for r and phi
+    z = np.matrix(np.zeros((0, 3)))  # place for r and phi
 
     i = 0
 
@@ -210,8 +201,8 @@ def observation(u, ud, lm):
 
 
 def get_inputs(u):
-    v = 1.0 # m/s
-    w = .1 # rad/s
+    v = 1.0  # m/s
+    w = .1  # rad/s
 
     temp = np.matrix(np.array([[v], [w]]))
     u_new = np.hstack((u, temp))
@@ -257,15 +248,12 @@ def main():
 
     u = np.matrix(np.zeros((2, 0)))  # first index is v the second is w
     ud = np.matrix(np.zeros((2, 0)))
-    # z1_t = np.matrix(np.zeros((0, 2)), dtype=object) #this allows for different sized matrices to be appended
     z1_t = []
 
     t = 0.0
     while t < t_f:
         u = get_inputs(u)
         x, ud, z, x_est = observation(u, ud, lm)  # Get the landmarks and add uncertainty to the measurements
-        # z1_t = np.vstack((z1_t, z))  #This is the history of measured landmarks
-        lz = len(z)
         z1_t.append(z)
         x_hat, z_hat = graph_slam(ud, z1_t, x_est)
 
