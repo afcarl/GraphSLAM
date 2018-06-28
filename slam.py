@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import math
 
 t_f = 100.0  # s
-t_step = 0.5  # s
+t_step = 2.0  # s
 
 MAX_DIST = 20.0  # distance landmarks can be sensed
 MAX_ITR = 20
@@ -23,9 +23,14 @@ Rt_inv = np.linalg.inv(Rt)
 
 def graph_slam(u, z1_t, x):
     #repeat the following until convergence. How do I know when it has converged
-    omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm= linearize(u, z1_t, x)  # Do the linearization
-    ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)  # Reduces the Information matrix
-    x, x_hat_lm = solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)
+    for i in range(MAX_ITR):
+        omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm= linearize(u, z1_t, x)  # Do the linearization
+        ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)  # Reduces the Information matrix
+        x, x_hat_lm = solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)
+
+    # omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm = linearize(u, z1_t, x)  # Do the linearization
+    # ox_til, xi_x_til = reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)  # Reduces the Information matrix
+    # x, x_hat_lm = solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)
 
     return x, x_hat_lm
 
@@ -60,7 +65,12 @@ def solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm
                 x_hat_lm[2*j, 0] += est[0, 0]  # Not sure that these should be plus
                 x_hat_lm[2*j+1, 0] += est[1, 0]
 
-    return x_hat, x_hat_lm
+    # Put x_hat into a 3 x Number of poses array
+    x_hat_new = np.zeros((3, x_hat.shape[0]/3))
+    for i in range(x_hat_new.shape[1]):
+        x_hat_new[:, i] = x_hat[3*i:3*i+3].T
+
+    return x_hat_new, x_hat_lm
 
 
 def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
@@ -124,10 +134,10 @@ def linearize(u, z1_t, x):
                        [0, 0, 1]])
         o_temp = -Gt.T * Rt_inv * Gt
         # omega_xx[i, i-1] = o_temp
-        omega_xx[3*i:3*i+3, 3*(i - 1):3*(i-1)+3] = o_temp  # Not sure which is supposed to be transposed. Does it matter as long as I am consistent?
+        omega_xx[3*i:(3*i)+3, 3*(i - 1):3*(i-1)+3] = o_temp  # Not sure which is supposed to be transposed. Does it matter as long as I am consistent?
         omega_xx[3*(i - 1):3*(i-1)+3, 3*i:3*i+3] = o_temp.T
 
-        xi_temp = -Gt.T * Rt_inv * (xhat_t - Gt * x[:, i-1])
+        xi_temp = -Gt.T * Rt_inv * (xhat_t - np.matmul(Gt, x[:, i-1])) #Gt * x[:, i-1])
         xi_xx.append(xi_temp)
 
     for j in range(len(z1_t)):
@@ -259,12 +269,6 @@ def main():
         z1_t.append(z)
         x_hat, z_hat = graph_slam(ud, z1_t, x_est)
 
-        # x_hat_x = np.zeros((1, x_hat.shape[0]/3))
-        # x_hat_y = np.zeros((1, x_hat.shape[0] / 3))
-        # for i in range(x_hat.shape[0]/3):
-        #     x_hat_x[0, i] = x_hat[3*i, 0]
-        #     x_hat_y[0, i] = x_hat[3*i+1, 0]
-
         # Plot the landmarks and estimated landmark positions
         plt.cla()
         plt.plot(lm[:, 0], lm[:, 1], 'kx')
@@ -272,7 +276,6 @@ def main():
         # Plot the true position and estimated position
         plt.plot(np.array(x[0, :]).flatten(), np.array(x[1, :]).flatten(), 'k')
         plt.plot(np.array(x_est[0, :]).flatten(), np.array(x_est[1, :]).flatten(), 'r')
-        # plt.plot(x_hat_x, x_hat_y, 'g')
 
         plt.pause(.001)
 
