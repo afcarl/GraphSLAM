@@ -8,7 +8,8 @@ t_f = 100.0  # s
 t_step = 2.0  # s
 
 MAX_DIST = 20.0  # distance landmarks can be sensed
-MAX_ITR = 20
+MAX_ITR = 20  #What should this be
+NUM_LM = 5
 
 sigma2_v = 0.1**2  # variance for velocity and angular velocity
 sigma2_w = math.radians(10.0)**2
@@ -22,7 +23,7 @@ Rt_inv = np.linalg.inv(Rt)
 
 
 def graph_slam(u, z1_t, x):
-    #repeat the following until convergence. How do I know when it has converged
+    # repeat the following until convergence. How do I know when it has converged
     for i in range(MAX_ITR):
         omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm= linearize(u, z1_t, x)  # Do the linearization
         ox_til, xi_x_til= reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm)  # Reduces the Information matrix
@@ -49,9 +50,11 @@ def solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm
     #Calculate the covariance
     x_hat_lm = np.zeros((2*5, 1))
     for j in range(len(xi_xm)):
+        if omega_xm.shape[0] == 2:
+            o_jj = np.linalg.inv(omega_mm[2 * j:2 * j + 2, 2 * j:2 * j + 2])
         for i in range(omega_xx.shape[1]/3 - 1):
             if omega_xm.shape[0] == 2:
-                o_jj = np.linalg.inv(omega_mm[2*j:2*j+2, 2*j:2*j+2])
+                # o_jj = np.linalg.inv(omega_mm[2*j:2*j+2, 2*j:2*j+2])
                 o_xm = omega_xm[2*j:2*j+2, 3*i:3*i+3]
                 xi_j = xi_xm[j]
                 mu = x_hat[3*i:3*i+3]
@@ -68,6 +71,7 @@ def solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm
     x_hat_new = np.zeros((3, x_hat.shape[0]/3))
     for i in range(x_hat_new.shape[1]):
         x_hat_new[:, i] = x_hat[3*i:3*i+3].T
+        x_hat_new[2, i] = ang_correct(x_hat_new[2, i])
 
     return x_hat_new, x_hat_lm
 
@@ -97,14 +101,16 @@ def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
 def linearize(u, z1_t, x):
     l_xc = x.shape[1]
     omega_xx = np.zeros((3 * l_xc, 3 * l_xc))
-    x0 = np.matrix(np.diag([np.infty, np.infty, np.infty]))
+    x0 = np.array(np.diag([np.infty, np.infty, np.infty]))
     omega_xx[0:3, 0:3] = x0
     xi_xx = [np.zeros((3, 1))]
 
-    omega_xm = np.zeros((2*l_xc, 3*5))
-    omega_mx = np.zeros((3*5, 2*l_xc))
-    xi_xm = [np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1)), np.zeros((2, 1))]
-    omega_mm = np.zeros((2*5, 2*5))
+    omega_xm = np.zeros((2*l_xc, 3*NUM_LM))
+    omega_mx = np.zeros((3*NUM_LM, 2*l_xc))
+    xi_xm = []
+    for i in range(NUM_LM):
+        xi_xm.append(np.zeros((2, 1)))
+    omega_mm = np.zeros((2*NUM_LM, 2*NUM_LM))
 
     c = u.shape[1] + 1
 
@@ -114,21 +120,23 @@ def linearize(u, z1_t, x):
         r = v/w
         theta = x[2, i - 1]
 
-        dx = np.matrix([[-r * math.sin(theta) + r * math.sin(theta + w * t_step)],
+        dx = np.array([[-r * math.sin(theta) + r * math.sin(theta + w * t_step)],
                         [r * math.cos(theta) - r * math.cos(theta + w * t_step)],
                         [w * t_step]])
 
-        xhat_t = x[:, i - 1] + dx
+        xhat_t = x[:, i - 1].reshape(3, 1) + dx
 
-        Gt = np.matrix([[1, 0, -r * math.cos(theta) + r * math.cos(theta + w * t_step)],
+        Gt = np.array([[1, 0, -r * math.cos(theta) + r * math.cos(theta + w * t_step)],
                        [0, 1, -r * math.sin(theta) + r * math.sin(theta + w * t_step)],
                        [0, 0, 1]])
-        o_temp = -Gt.T * Rt_inv * -Gt
+        o_temp = np.matmul(np.matmul(-Gt.T, Rt_inv), -Gt)
         omega_xx[3*i:(3*i)+3, 3*(i - 1):3*(i-1)+3] = o_temp
         omega_xx[3*(i - 1):3*(i-1)+3, 3*i:3*i+3] = o_temp.T
+        omega_xx[3*i:3*i+3, 3*i:3*i+3] = o_temp
 
-        xi_temp = -Gt.T * Rt_inv * (xhat_t - np.matmul(Gt, x[:, i-1]))
+        xi_temp = np.matmul(np.matmul(-Gt.T, Rt_inv), (xhat_t - np.matmul(Gt, x[:, i-1]).reshape(3, 1)))
         xi_xx.append(xi_temp)
+        xi_xx[i-1] += xi_temp
 
     for j in range(len(z1_t)):
         zt_i = z1_t[j]
@@ -145,20 +153,20 @@ def linearize(u, z1_t, x):
 
             q = np.matmul(delta.T, delta)[0, 0]
             phi_hat = math.atan2(dy, dx) - x[2, j]
-            zt_hat = np.matrix([[math.sqrt(q)], [ang_correct(phi_hat)]])
+            zt_hat = np.array([[math.sqrt(q)], [ang_correct(phi_hat)]])
 
-            Ht = 1/q * np.matrix([[-math.sqrt(q) * dx, -math.sqrt(q) * dy, 0, math.sqrt(q) * dx, math.sqrt(q) * dy],
+            Ht = 1/q * np.array([[-math.sqrt(q) * dx, -math.sqrt(q) * dy, 0, math.sqrt(q) * dx, math.sqrt(q) * dy],
                                   [dy, -dx, -q, -dy, dx]])
 
-            o_temp = Ht.T * Qt_inv * Ht  # Also need to break this up and add to different parts
+            o_temp = np.matmul(np.matmul(Ht.T, Qt_inv), Ht)  # Also need to break this up and add to different parts
             omega_xx[3*(j + 1):3*(j+1)+3, 3*(j + 1):3*(j+1)+3] += o_temp[0:3, 0:3]
             omega_xm[2*(j+1):2*(j+1)+2, 3*index:3*index+3] += o_temp[3:5, 0:3]  # Not sure if I can do this
             omega_mx[3*index:3*index+3, 2*(j+1):2*(j+1)+2] += o_temp[0:3, 3:5]
             omega_mm[2*index:2*index+2, 2*index:2*index+2] += o_temp[3:5, 3:5]
 
-            zt = np.matrix([[r], [phi]])
-            state = np.matrix([[x[0, j]], [x[1, j]], [x[2, j]], [x[0, j] + dx], [x[1, j] + dy]])
-            xi_temp = Ht.T * Qt_inv * (zt - zt_hat + Ht * state)
+            zt = np.array([[r], [phi]])
+            state = np.array([[x[0, j]], [x[1, j]], [x[2, j]], [x[0, j] + dx], [x[1, j] + dy]])
+            xi_temp = np.matmul(np.matmul(Ht.T, Qt_inv), (zt - zt_hat + np.matmul(Ht, state)))
             xi_xx[j] += xi_temp[0:3]
             xi_xm[k] += xi_temp[3:5]
 
@@ -210,7 +218,7 @@ def get_inputs(u):
 
 
 def motion_model(u):
-    x = np.matrix(np.zeros((3, 1)))
+    x = np.array(np.zeros((3, 1)))
     c = u.shape[1]
 
     for i in range(c):
@@ -218,20 +226,21 @@ def motion_model(u):
         w = u[1, i]
         r = v/w
         theta = x[2, -1]
-        dx = np.matrix([[-r * math.sin(theta) + r * math.sin(theta + w * t_step)],
+        dx = np.array([[-r * math.sin(theta) + r * math.sin(theta + w * t_step)],
                         [r * math.cos(theta) - r * math.cos(theta + w * t_step)],
                         [w * t_step]])
-        temp = x[:, -1] + dx
+        temp = x[:, -1].reshape(3, 1) + dx
+        temp[2, 0] = ang_correct(temp[2, 0])
         x = np.hstack((x, temp))
 
     return x
 
 
 def ang_correct(ang):
-    while ang >= 2 * math.pi:
+    while ang >= math.pi:
         ang = ang - 2 * math.pi
 
-    while ang <= -2 * math.pi:
+    while ang <= -math.pi:
         ang = ang + 2 * math.pi
 
     return ang
