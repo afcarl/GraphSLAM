@@ -50,21 +50,20 @@ def solve(ox_til, xi_x_til, omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm
     #Calculate the covariance
     x_hat_lm = np.zeros((2*5, 1))
     for j in range(len(xi_xm)):
-        if omega_xm.shape[0] == 2:
+        if not np.linalg.det(omega_mm[2 * j:2 * j + 2, 2 * j:2 * j + 2]) == 0:
             o_jj = np.linalg.inv(omega_mm[2 * j:2 * j + 2, 2 * j:2 * j + 2])
         for i in range(omega_xx.shape[1]/3 - 1):
-            if omega_xm.shape[0] == 2:
-                # o_jj = np.linalg.inv(omega_mm[2*j:2*j+2, 2*j:2*j+2])
-                o_xm = omega_xm[2*j:2*j+2, 3*i:3*i+3]
+            # if omega_xm.shape[0] == 2:  #  This if statement doesn't work
+            if np.count_nonzero(omega_xm[2 * i:2 * i + 2, 3 * j:3 * j + 3]):
+                # o_xm = omega_xm[2*j:2*j+2, 3*i:3*i+3]
+                o_xm = omega_xm[2 * i:2 * i + 2, 3 * j:3 * j + 3]
                 xi_j = xi_xm[j]
                 mu = x_hat[3*i:3*i+3]
-
-                print o_xm.shape
 
                 temp1 = xi_j + np.matmul(o_xm, mu)
                 est = np.matmul(o_jj, temp1)
 
-                x_hat_lm[2*j, 0] = est[0, 0]  # Not sure that these should be plus. Try minus
+                x_hat_lm[2*j, 0] = est[0, 0]  # Plus, minus or neither?
                 x_hat_lm[2*j+1, 0] = est[1, 0]
 
     # Put x_hat into a 3 x Number of poses array
