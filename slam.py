@@ -56,27 +56,16 @@ def solve(ox_til, xi_x_til, omega_xx, omega_xm, xi_xm, omega_mm):
         if not np.linalg.det(omega_mm[2 * j:2 * j + 2, 2 * j:2 * j + 2]) == 0:
             o_jj = np.linalg.inv(omega_mm[2 * j:2 * j + 2, 2 * j:2 * j + 2])
             xi_j = xi_xm[j]
-        for i in range(omega_xx.shape[1]/3 - 1):
-            if np.count_nonzero(omega_xm[2 * i:2 * i + 2, 3 * j:3 * j + 3]):
-                temp_m = x_hat[3*i:3*i+3]
-                mu = np.vstack((mu, temp_m))
+            for i in range(omega_xx.shape[1]/3 - 1):
+                if np.count_nonzero(omega_xm[2 * i:2 * i + 2, 3 * j:3 * j + 3]):
+                    temp_m = x_hat[3*i:3*i+3]
+                    mu = np.vstack((mu, temp_m))
 
-                temp_o = omega_xm[2 * i:2 * i + 2, 3 * j:3 * j + 3]
-                o_xm = np.hstack((o_xm, temp_o))
-
-                # # o_xm = omega_xm[2*j:2*j+2, 3*i:3*i+3]
-                # o_xm = omega_xm[2 * i:2 * i + 2, 3 * j:3 * j + 3]
-                # xi_j = xi_xm[j]
-                # mu = x_hat[3*i:3*i+3]
-                #
-                # temp1 = xi_j + np.matmul(o_xm, mu)
-                # est = np.matmul(o_jj, temp1)
-                #
-                # x_hat_lm[2*j, 0] = est[0, 0]  # PLUS, MINUS OR JUST EQUAL TO?
-                # x_hat_lm[2*j+1, 0] = est[1, 0]
-        est = np.matmul(o_jj, xi_j + np.matmul(o_xm, mu))
-        x_hat_lm[2*j, 0] = est[0, 0]
-        x_hat_lm[2*j+1, 0] = est[1, 0]
+                    temp_o = omega_xm[2 * i:2 * i + 2, 3 * j:3 * j + 3]
+                    o_xm = np.hstack((o_xm, temp_o))
+            est = np.matmul(o_jj, xi_j + np.matmul(o_xm, mu))
+            x_hat_lm[2*j, 0] = est[0, 0]
+            x_hat_lm[2*j+1, 0] = est[1, 0]
 
     # Put x_hat into a 3 x Number of poses array
     x_hat_new = np.zeros((3, x_hat.shape[0]/3))
@@ -95,35 +84,58 @@ def reduction(omega_xx, xi_xx, omega_xm, omega_mx, xi_xm, omega_mm):
     ox_til = omega_xx
     xi_x_til = xi_xx
 
-    '''
-    Not sure I have done the reduction entirely right.
-    1. From table in book (349): Is every Omega_Tao(j),j*OmegaInv_j,j*xi_j subtracted from every pose in Tao or just the one it corresponds to
-    '''
 
-    # For each feature on the map
-    for j in range(len(xi_xm)):
-        o_temp = np.zeros((3, 3))
-        xi_temp = np.zeros((3, 1))
-        for i in range(omega_xx.shape[1]/3 - 1):
-            if np.count_nonzero(omega_xm[2*i:2*i+2, 3*j:3*j+3]):
-                m3 = omega_xm[2*i:2*i+2, 3*j:3*j+3]
-                m2 = np.linalg.inv(omega_mm[2*j:2*j+2, 2*j:2*j+2])
-                m1 = omega_mx[3*j:3*j+3, 2*i:2*i+2]
-                b = xi_xm[j]
+    for j in range(len(xi_xm)):  # For every feature on the map
+        index = []
+        if not np.linalg.det(omega_mm[2 * j:2 * j + 2, 2 * j:2 * j + 2]) == 0:  # Has this landmark been sighted
+            o_1 = np.zeros((0, 2))
+            o_3 = np.zeros((2, 0))
+            for i in range(omega_xx.shape[1] / 3 - 1):  # For every pose recorded
+                if np.count_nonzero(omega_xm[2*i:2*i+2, 3*j:3*j+3]) > 0:  # Make sure landmark is sighted from this pose
+                        m3 = omega_xm[2*i:2*i+2, 3*j:3*j+3]
+                        m1 = omega_mx[3*j:3*j+3, 2*i:2*i+2]
 
-                xi_temp += np.matmul(np.matmul(m1, m2), np.array(b))  # This is used with the second for loop right below
-                o_temp += np.matmul(np.matmul(m1, m2), m3)
+                        o_1 = np.vstack((o_1, m1))
+                        o_3 = np.hstack((o_3, m3))
 
-                # xi_temp = np.matmul(np.matmul(m1, m2), np.array(b))
-                # xi_x_til[i] -= xi_temp
+                        index.append(i)
+            m2 = np.linalg.inv(omega_mm[2 * j:2 * j + 2, 2 * j:2 * j + 2])
+            b = np.array(xi_xm[j])
+            o_temp = np.matmul(np.matmul(o_1, m2), o_3)
+            xi_temp = np.matmul(np.matmul(o_1, m2), b)
 
-                # o_temp = np.matmul(np.matmul(m1, m2), m3)
-                # ox_til[3*i:3*i+3, 3*i:3*i+3] -= o_temp
+            for i in range(len(index)):
+                i1 = index[i]
+                xi_x_til[i1] -= xi_temp[3*i:3*i+3]
+                for k in range(i, len(index)):
+                    i2 = index[k]
 
-        for i in range(omega_xx.shape[1]/3 - 1):
-            if np.count_nonzero(omega_xm[2*i:2*i+2, 3*j:3*j+3]):
-                xi_x_til[i] -= xi_temp
-                ox_til[3 * i:3 * i + 3, 3 * i:3 * i + 3] -= o_temp
+                    ox_til[3*i1:3*i1+3, 3*i2:3*i2+3] -= o_temp[3*i:3*i+3, 3*k:3*k+3]
+                    if not i == k:
+                        ox_til[3*i2:3*i2+3, 3*i1:3*i1+3] -= o_temp[3*k:3*k+3, 3*i:3*i+3]
+
+    # # For each feature on the map
+    # for j in range(len(xi_xm)):
+    #     if not np.linalg.det(omega_mm[2 * j:2 * j + 2, 2 * j:2 * j + 2]) == 0:
+    #         m2 = np.linalg.inv(omega_mm[2 * j:2 * j + 2, 2 * j:2 * j + 2])
+    #         b = xi_xm[j]
+    #     o_1 = np.zeros((3, 0))
+    #     o_3 = np.zeros((0, 2))
+    #     for i in range(omega_xx.shape[1]/3 - 1):
+    #         if np.count_nonzero(omega_xm[2*i:2*i+2, 3*j:3*j+3]):
+    #             m3 = omega_xm[2*i:2*i+2, 3*j:3*j+3]
+    #             m1 = omega_mx[3*j:3*j+3, 2*i:2*i+2]
+    #
+    #             o_1 = np.vstack((o_1, m1))
+    #             o_3 = np.hstack((o_3, m3))
+    #
+    #             # xi_temp = np.matmul(np.matmul(m1, m2), np.array(b))
+    #             # xi_x_til[i] -= xi_temp
+    #             #
+    #             # o_temp = np.matmul(np.matmul(m1, m2), m3)
+    #             # ox_til[3*i:3*i+3, 3*i:3*i+3] -= o_temp
+    #     xi_temp = np.matmul(np.matmul(o_1, m2), np.array(b))
+    #     o_temp = np.matmul(np.matmul(o_1, m2), o_3)
 
     return ox_til, xi_x_til
 
