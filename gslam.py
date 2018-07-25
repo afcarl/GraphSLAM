@@ -29,8 +29,19 @@ def graph_slam(u, z1_t, x_est, z_hat):
         omega_xx, omega_mm, omega_mx, omega_xm, xi_x, xi_m = linearize(u, z1_t, x_est, z_hat)
         # Note that the signs for each grouping of 2x3 and 3x2 are not consistent in o_mx and o_xm... Not sure if this is an issue
         omega_til, xi_til = reduction(omega_xx, omega_mm, omega_mx, omega_xm, xi_x, xi_m, z1_t)
+        x_hat = solve_system(omega_til, xi_til, omega_mm, omega_mx)
 
-    return x_est  # This will change
+    return x_est, z_hat  # This will change
+
+
+def solve_system(omega_til, xi_til, omega_mm, omega_mx):
+    P = np.linalg.inv(omega_til)
+    x_til = np.zeros((0, 1))
+    for i in range(xi_til.shape[1]):
+        x_til = np.vstack((x_til, xi_til[:, i].reshape((3, 1))))
+    x_hat = np.matmul(P, x_til)
+
+    return x_hat
 
 
 def reduction(omega_xx, omega_mm, omega_mx, omega_xm, xi_x, xi_m, z1_t):
@@ -236,7 +247,7 @@ def main():
         u = get_inputs(u)
         x, ud, z, x_est = observation(u, ud, lm)  # Get the landmarks and add uncertainty to the measurements
         z1_t.append(z)
-        x_hat = graph_slam(ud, z1_t, x_est, z_hat)
+        x_hat, z_hat = graph_slam(ud, z1_t, x_est, z_hat)
 
         # Plot the landmarks and estimated landmark positions
         plt.cla()
