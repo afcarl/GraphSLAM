@@ -27,8 +27,45 @@ def graph_slam(u, z1_t, x_est, z_hat):
 
     for i in range(MAX_ITR):
         omega_xx, omega_mm, omega_mx, omega_xm, xi_x, xi_m = linearize(u, z1_t, x_est, z_hat)
+        # Note that the signs for each grouping of 2x3 and 3x2 are not consistent in o_mx and o_xm... Not sure if this is an issue
+        omega_til, xi_til = reduction(omega_xx, omega_mm, omega_mx, omega_xm, xi_x, xi_m, z1_t)
 
     return x_est  # This will change
+
+
+def reduction(omega_xx, omega_mm, omega_mx, omega_xm, xi_x, xi_m, z1_t):
+    omega_til = copy.deepcopy(omega_xx)
+    xi_til = copy.deepcopy(xi_x)
+
+    for j in range(NUM_LM):
+        # Loop through each pose
+        m1 = np.zeros((0, 2))  # 3n x 2
+        m3 = np.zeros((2, 0))  # 2 x 3n
+        poses = []
+        for i in range(omega_xx.shape[1]/3-1):
+            lm_array = z1_t[i]
+            if float(j) in lm_array[:, 2]:
+                m1 = np.vstack((m1, omega_xm[3*(i+1):3*(i+2), 2*j:2*(j+1)]))
+                m3 = np.hstack((m3, omega_mx[2*j:2*(j+1), 3*(i+1):3*(i+2)]))
+                poses.append(i+1)
+
+        if not len(poses) == 0:  # Checks if the landmark has been observed
+            m2 = np.linalg.inv(omega_mm[2*j:2*(j+1), 2*j:2*(j+1)])
+            b = xi_m[:, j].reshape((2, 1))
+
+            xi_temp = np.matmul(np.matmul(m1, m2), b)
+            o_temp = np.matmul(np.matmul(m1, m2), m3)
+
+            counter = 0
+            for k in poses:
+                xi_til[:, k] = (xi_til[:, k].reshape((3, 1)) - xi_temp[3*counter:3*(counter+1), 0].reshape((3, 1))).reshape((3,))
+                c2 = 0
+                for g in poses:
+                    omega_til[3*k:3*(k+1), 3*g:3*(g+1)] -= o_temp[3*counter:3*(counter+1), 3*c2:3*(c2+1)]
+                    c2 += 1
+                counter += 1
+
+    return omega_til, xi_til
 
 
 def linearize(u, z1_t, x_est, z_hat):
@@ -111,7 +148,7 @@ def observation(u, ud, lm):
 
     x = motion_model(u)  # augment the current x vector
 
-    z = np.matrix(np.zeros((0, 3)))  # place for r and phi
+    z = np.zeros((0, 3))  # place for r and phi
 
     i = 0
 
@@ -125,7 +162,7 @@ def observation(u, ud, lm):
             # Add uncertainty to the values
             r = r + np.random.randn() * sigma2_r
             phi = phi + np.random.randn() * sigma2_phi
-            temp = np.matrix([r, phi, i])
+            temp = np.array([r, phi, i])
             z = np.vstack((z, temp))
 
         i += 1
